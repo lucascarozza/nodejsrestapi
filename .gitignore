@@ -1,3 +1,6 @@
 node_modules
 db
+
+# Environment variables
 .env
+.env.test
