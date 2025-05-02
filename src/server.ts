@@ -1,26 +1,15 @@
+// External libraries
 import fastify from "fastify";
-// import { randomUUID } from "node:crypto";
-import { knex } from "./database";
+// Internal utilities
 import { env } from "./env";
+// Fastify plugins
+import { transactionsRoutes } from "./routes/transactions";
 
 const server = fastify();
 
-server.get("/transaction", async () => {
-  // const transaction = await knex("transactions")
-  //   .insert({
-  //     id: randomUUID(),
-  //     title: "Transação teste",
-  //     amount: 1000,
-  //   })
-  //   .returning("*");
-
-  const transaction = await knex("transactions").select("*");
-
-  // const transaction = await knex("transactions")
-  //   .where("amount", 1000)
-  //   .select("*");
-
-  return transaction;
+// Fastify plugins
+server.register(transactionsRoutes, {
+  prefix: "transactions",
 });
 
 server
