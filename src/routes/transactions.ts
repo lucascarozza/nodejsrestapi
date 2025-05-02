@@ -4,39 +4,9 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 // Internal utilities
 import { knex } from "../database";
+import { checkIfSessionIdExists } from "../prehandlers/check-if-session-id-exists";
 
 export async function transactionsRoutes(server: FastifyInstance) {
-  // List Transactions
-  server.get("/", async () => {
-    const transactions = await knex("transactions").select("*");
-    return { transactions };
-  });
-
-  // Get Transaction Details
-  server.get("/:id", async (request) => {
-    // Zod Schema
-    const getTransactionDetailsParamsSchema = z.object({
-      id: z.string().uuid(),
-    });
-
-    const { id } = getTransactionDetailsParamsSchema.parse(request.params);
-
-    const transaction = await knex("transactions").where("id", id).first();
-
-    return { transaction };
-  });
-
-  // Summarize Transactions
-  server.get("/summary", async () => {
-    const summary = await knex("transactions")
-      .sum("amount", {
-        as: "amount",
-      })
-      .first();
-
-    return { summary };
-  });
-
   // Create Transaction
   server.post("/", async (request, reply) => {
     // Zod Schema
@@ -50,12 +20,87 @@ export async function transactionsRoutes(server: FastifyInstance) {
       request.body
     );
 
+    let { sessionId } = request.cookies;
+
+    if (!sessionId) {
+      sessionId = randomUUID();
+      reply.cookie("sessionId", sessionId, {
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      });
+    }
+
     await knex("transactions").insert({
       id: randomUUID(),
       title,
       amount: type === "credit" ? amount : amount * -1,
+      session_id: sessionId,
     });
 
     return reply.status(201).send("Transaction created.");
   });
+
+  // List Transactions
+  server.get(
+    "/",
+    {
+      preHandler: [checkIfSessionIdExists],
+    },
+    async (request) => {
+      const { sessionId } = request.cookies;
+
+      const transactions = await knex("transactions")
+        .where("session_id", sessionId)
+        .select();
+
+      return { transactions };
+    }
+  );
+
+  // Get Transaction Details
+  server.get(
+    "/:id",
+    {
+      preHandler: [checkIfSessionIdExists],
+    },
+    async (request) => {
+      // Zod Schema
+      const getTransactionDetailsParamsSchema = z.object({
+        id: z.string().uuid(),
+      });
+
+      const { id } = getTransactionDetailsParamsSchema.parse(request.params);
+
+      const { sessionId } = request.cookies;
+
+      const transaction = await knex("transactions")
+        .where({
+          session_id: sessionId,
+          id,
+        })
+        .first();
+
+      return { transaction };
+    }
+  );
+
+  // Summarize Transactions
+  server.get(
+    "/summary",
+    {
+      preHandler: [checkIfSessionIdExists],
+    },
+    async (request) => {
+      const { sessionId } = request.cookies;
+
+      const summary = await knex("transactions")
+        .where("session_id", sessionId)
+        .sum("amount", {
+          as: "amount",
+        })
+        .first();
+
+      return { summary };
+    }
+  );
 }
